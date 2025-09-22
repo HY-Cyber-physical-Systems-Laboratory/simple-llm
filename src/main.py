@@ -2,6 +2,7 @@ import os
 import json
 import urllib.request
 import xml.etree.ElementTree as ET
+import random
 from gensim.models.word2vec import Word2Vec
 from konlpy.tag import Hannanum
 
@@ -12,9 +13,11 @@ def make_url(word: str) -> str:
 
 
 def get_data(url: str) -> str:
-    response = urllib.request.urlopen(url)
-    return response.read().decode("utf-8")
-
+    try:
+        response = urllib.request.urlopen(url)
+        return response.read().decode("utf-8")
+    except:
+        return get_data(url)
 
 def parse_data(data: str) -> list:
     root = ET.fromstring(data)
@@ -61,12 +64,12 @@ if __name__ == "__main__":
     else:
         print("⚠️ 기존 모델 없음 → 새로 생성")
         model = Word2Vec(vector_size=0xff, window=0xf, min_count=1, workers=12, sg=0)
-        model.build_vocab([["시작"]])  # seed
-        model.train([["시작"]], total_examples=1, epochs=1)
+        model.build_vocab([[" "]])  # seed
+        model.train([[" "]], total_examples=1, epochs=1)
         words = set()
 
     # 시작 단어
-    start_word = "사과"
+    start_word = "달콤하고"
     items = [start_word] if start_word not in words else list(words)
     words.add(start_word)
 
@@ -74,6 +77,7 @@ if __name__ == "__main__":
     iteration = latest_iter
 
     while len(items) > 0:
+        # using algorithm : BFS
         if iteration >= max_iterations:
             break
 
@@ -105,18 +109,35 @@ if __name__ == "__main__":
             tokens = hannanum.morphs(definition)
             model.build_vocab([tokens], update=True)
             model.train([tokens], total_examples=1, epochs=1)
-
+        
         # 🔹 10번마다 모델 + 단어 세트 저장
-        if iteration % 10 == 0:
+        if iteration % 50 == 0:
             print(f"iteration : {iteration}, words : {len(words)}, items : {len(items)}")
             model.save(f"word2vec_{iteration}.model")
             with open("word_set.json", "w", encoding="utf-8") as f:
                 json.dump(list(words), f, ensure_ascii=False, indent=2)
 
         print("====================================")
+        
 
-    # 예시: 결과 확인
-    print(model.wv.most_similar("꽃"))
-    print(model.wv.most_similar("날"))
-    print(model.wv.most_similar("아침에"))
-    print(model.wv.most_similar("뜨자"))
+    def safe_most_similar(model, positives=None, negatives=None, topn=10):
+        positives = [w for w in (positives or []) if w in model.wv.key_to_index]
+        negatives = [w for w in (negatives or []) if w in model.wv.key_to_index]
+
+        if not positives and not negatives:
+            raise ValueError("모델에 포함된 단어가 없습니다.")
+
+        return model.wv.most_similar(positive=positives, negative=negatives, topn=topn)
+
+    
+    start_string = "빨간색 달콤한 과일인 사과는"
+    neg_words = []
+
+    while True:
+        most_similar = safe_most_similar(model, positives=hannanum.morphs(start_string), topn=10, negatives=neg_words)
+        pick_most = most_similar[random.randint(0, 9)][0]
+        neg_words.append(pick_most)
+        start_string += " " + pick_most
+        # 예시: 결과 확인
+        print(start_string)
+        
